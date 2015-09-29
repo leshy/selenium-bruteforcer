@@ -1,70 +1,105 @@
-webdriverio = require 'webdriverio'
-p = require 'bluebird'
-h = require 'helpers'
-_ = require 'underscore'
-lbl = require 'line-by-line'
-colors = require 'colors'
 
+require! {
+  fs
+  path
+  colors
+  webdriverio
+  events
+  bluebird: p
+  helpers: h
+  underscore: _
+  }
+
+  
 options =
   desiredCapabilities:    
     browserName: 'chrome'
 
 
+class Reader extends events.EventEmitter
+  (filePath, options) ->
+    defaults = {
+      loop: false
+    }
+    
+    @options = _.extend defaults, options
+    @_filePath = path.normalize filePath
+    
+    @_lines = []
+    @_requests = []
+    
+    @makeReadStream!
+
+  makeReadStream: -> 
+    @_fragment = ""
+
+    @_stream = fs.createReadStream @_filePath
+    @_stream.on 'error' -> throw it
+
+    @_stream.on 'data', (data) ~>
+      @_stream.pause!
+      data = String(data).split(/(?:\n|\r\n|\r)/g)
+      data[0] = @_fragment + data[0]
+
+      if data.length > 0 then @_fragment = data.pop()
+      else @_fragment = ""
+
+      @_lines = @_lines.concat data
+      if @_lines.length then @_stream.pause!; @emit 'push'
+
+    @_stream.on 'end', ~>
+      @_stream.removeAllListeners!
+      #if @_fragment then @_lines.push @_fragment
+      if @options.loop then
+        @makeReadStream!
+        @emit 'loop'
+        @emit 'end'        
+      else
+        @emit 'end'
+        _.map @_requests, ~>  it.reject new Error "reached the end of #{@_filePath}"
+      
+  work: ->
+    @_working = true
+    if @_stream.isPaused! then @_stream.resume!
+
+    shift = ~> 
+      @_requests.shift!.resolve @_lines.shift!
+      if @_requests.length then @work!
+      else @_working = false
+
+    if @_lines.length then shift!
+    else @once 'push', shift
+    
+  next: -> new p (resolve,reject) ~>
+    if @_lines.length then resolve @_lines.shift!
+    else
+      @_requests.push { resolve: resolve, reject: reject }
+      if not @_working then @work!
+
 class BruteForcer
   (@userList, @passList) ->
-    @ulr = new lbl @userList
-    @plr = new lbl @passList
-    @ulr.pause!
-    @plr.pause!
-    
-    @ulr.on 'end', ~> @ended = true
-    
-    @plr.on 'end', ~>
-      console.log 'password list end, creating a new one'
+    @ur = new Reader @userList
+    @pr = new Reader @passList, loop: true
+
+    @pr.on 'loop' ~> @user = void
     
     @requests = []
     
   getUser: -> new p (resolve,reject) ~>
-    if @user? then return resolve @user
-      
-    @ulr.once 'line', (user) ~> 
-      @ulr.pause!
-      resolve @user = user
-      
-    @ulr.resume!
+    if @user then return resolve @user
+    else @ur.next!then ~> resolve @user = it
     
-  getPass: -> new p (resolve,reject) ~>
-    endListener = void
-    
-    @plr.once 'line', (pass) ~>
-      @plr.removeListener 'end', endListener
-      @plr.pause!
-      resolve pass
-      
-    @plr.once 'end', endListener = ~>
-      @plr = new lbl @passList
-      @plr.pause!
-      delete @user
-      resolve @getPass!
-    
-    @plr.resume!
-
-
-  work: ->
-    @working = true
-    p.all([ @getUser!, @getPass! ]).then (login) ~>
-      @requests.shift! {user: login[0], pass: login[1] }
-      if @requests.length then @work!
-      else @working = false
-    
-  next: ->
-    if @ended then return reject "ended"
-    new p (resolve,reject) ~>
-      @requests.push resolve
-      if not @working then @work!
-
+  getPass: -> @pr.next!
+  
+  next: -> new p (resolve,reject) ~> 
+    p.all([ @getUser!, @getPass! ]).then ->
+      resolve user: it[0], pass: it[1]
 
 bruteForcer = new BruteForcer('user.txt', 'pass.txt')
+
+loopy = ->
+  bruteForcer.next!then -> console.log it; loopy!
+loopy!
 
 bf = (page) ->
   page
@@ -99,8 +134,5 @@ spawnWorker = ->
   .title (err, res) -> console.log('title: ' + res.value)
 
   bf page
-    
-spawnWorker()
-spawnWorker()
-spawnWorker()
-spawnWorker()
+
+_.times 4, spawnWorker    
