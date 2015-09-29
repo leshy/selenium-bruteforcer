@@ -1,13 +1,18 @@
 {
   "name": "bruteforcer",
   "version": "1.0.0",
-  "description": "",
   "main": "app.js",
+  "description": "selenium bruteforcer",
   "dependencies": {
     "bluebird": "^2.10.1",
     "colors": "^1.1.2",
     "helpers": "git://github.com/leshy/nodejs-helpers.git",
-    "selenium-node-webdriver": "^0.1.2"
+    "selenium-node-webdriver": "^0.1.2",
+    "webdriverio": "^3.2.4"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leshy/selenium-bruteforce.git"
   },
   "devDependencies": {},
   "scripts": {

